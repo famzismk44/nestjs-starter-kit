@@ -1,0 +1,71 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  AWS_REGION: us-east-1 
+  ECR_REPOSITORY: mynestjs
+  APP_NAME: bradynestjs
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Node.js (or your runtime)
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+    
+    - name: Install dependencies
+      run: npm install  
+      
+    - name: Run unit tests
+      run: npm test  
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+    
+    - name: Build, tag, and push image to Amazon ECR
+      id: build-image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        # Build the Docker image
+        docker build -t ${{ env.APP_NAME }} .
+        
+        # Tag the image
+        docker tag ${{ env.APP_NAME }}:latest $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+        docker tag ${{ env.APP_NAME }}:latest $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
+        
+        # Push the image
+        docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+        docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
+        
+        # Store the image URI for the deploy step
+        echo "image_uri=$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG" >> $GITHUB_OUTPUT
+    
+    outputs:
+      image_uri: ${{ steps.build-image.outputs.image_uri }}
