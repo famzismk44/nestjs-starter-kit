@@ -28,6 +28,7 @@ jobs:
       
     - name: Run unit tests
       run: npm run test  
+      working-directory: ./api
 
   build-and-push:
     needs: test
